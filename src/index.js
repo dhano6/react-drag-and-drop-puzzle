@@ -20,6 +20,43 @@ const reducer = (state, action) => {
         shuffled: [...action.payload.shuffled],
         solved: [...action.payload.solved]
       };
+    case "DROP":
+      const targetBoardName = action.payload.target;
+      const targetBoardArray = [...state[targetBoardName]];
+      if (targetBoardArray[action.payload.targetIndex]) return state;
+
+      const piecesArray = [...state.pieces];
+      const pieceData = { ...piecesArray[action.payload.pieceId] };
+      // old board
+      const originBoardName = pieceData.board;
+      // IMPORTANT CHECK: if target and origin boards are same then they must point to
+      // same array otherwise we have 2 copies of same array and at the end,
+      // one would overwrite the other
+      const originBoardArray =
+        originBoardName === targetBoardName
+          ? targetBoardArray
+          : [...state[originBoardName]];
+      // find piece being moved in old board array
+      const originPiece = originBoardArray.find(
+        el => el && el.order === action.payload.pieceId
+      );
+      // find its index in this array
+      const originPieceIndex = originBoardArray.indexOf(originPiece);
+      // remove piece from old position
+      originBoardArray[originPieceIndex] = undefined;
+      // save new board name in pieces array
+      piecesArray[action.payload.pieceId].board = targetBoardName;
+      // save it also into moved piece - not needed
+      pieceData.board = targetBoardName;
+      // save moved piece into new position
+      targetBoardArray[action.payload.targetIndex] = pieceData;
+
+      return {
+        ...state,
+        pieces: piecesArray,
+        [originBoardName]: originBoardArray,
+        [targetBoardName]: targetBoardArray
+      };
     default:
       throw new Error();
   }
@@ -35,19 +72,6 @@ const shuffle = pieces => {
   }
 
   return shuffled;
-};
-
-const renderPieceContainer = (piece, index, boardName) => {
-  return (
-    <li key={index}>
-      {piece && (
-        <img
-          src={require(`./assets/images/${piece.filename}`)}
-          alt={`${piece.filename}`}
-        />
-      )}
-    </li>
-  );
 };
 
 function App() {
@@ -73,6 +97,55 @@ function App() {
     });
   }, []);
 
+  const handleDragStart = (event, order) => {
+    // The dataTransfer object is used to store the data needed to identify
+    // what is being dragged. We use the value of the order parameter for such purpose.
+    event.dataTransfer.setData("text/plain", order);
+  };
+
+  const handleDrop = (event, index, droppedOnBoard) => {
+    const pieceOrder = event.dataTransfer.getData("text");
+    const pieceOrderTypeNumber = parseInt(pieceOrder, 10);
+    dispatch({
+      type: "DROP",
+      payload: {
+        target: droppedOnBoard,
+        targetIndex: index,
+        pieceId: pieceOrderTypeNumber
+      }
+    });
+  };
+
+  const renderPieceContainer = (piece, index, boardName) => {
+    // v src atribute musime zavolat require aby sme dostali spravny nazov
+    // suboru a cestu, lebo webpack ich zahashuje pri bundlovani a mi
+    // sa potrebujeme aktualny nazov cestu, ine riesenie by bolo dat images do
+    // public foldra alebo robit import na zaciatku pre kazdy jeden obrazok
+    // keby webpack nemenil nazvy suborov dalo by sa aj tak ze importnem jeden
+    // image a zvysok imagov len menim nazov suboru na konci cesty k image
+    // keby webpack nemenil ani cestu stacila by len relativna cesta
+
+    // onDragOver - normal behavior of the onDragOver event is to disallow
+    // dropping. To overcome this, we’re calling the event.preventDefault() method.
+    return (
+      <li
+        key={index}
+        onDragOver={e => e.preventDefault()}
+        onDrop={e => handleDrop(e, index, boardName)}
+      >
+        {piece && (
+          <img
+            draggable
+            src={require(`./assets/images/${piece.filename}`)}
+            alt={`${piece.filename}`}
+            onDragStart={e => handleDragStart(e, piece.order)}
+          />
+        )}
+      </li>
+    );
+  };
+
+  console.log(state);
   return (
     <Puzzle>
       <ShuffledBoard>
